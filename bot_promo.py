@@ -13,8 +13,8 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 # VOS RÉGLAGES PERSONNALISÉS
 # ==========================================
 NOM = "Livraison à Amiens"
-PHOTO_ACCUEIL = "menu.jpg"  # Photo affichée au démarrage (/start)
-PHOTO_CARTE = "carte.jpg"   # Photo affichée quand on clique sur "Consulter le menu"
+PHOTO_ACCUEIL = "menu.jpg"  # Image pour le /start
+PHOTO_CARTE = "carte.jpg"   # Image pour le menu
 LOCALISATION = "Amiens et environs"
 
 MESSAGE_ACCUEIL = "Bonjour ! Nous sommes disponibles sur Amiens, n'hésitez pas à consulter le menu ci-dessous !"
@@ -27,18 +27,16 @@ SERVICES = """📋 *NOTRE MENU & SERVICES*
 • Produits sélectionnés avec soin
 • Service discret et réactif"""
 
-# Liste de départ des avis clients
 avis_clients = [5]
 
 # ==========================================
-# SERVEUR WEB POUR RENDER
+# SERVEUR WEB POUR RENDER (Port 10000)
 # ==========================================
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"Bot actif")
-
     def log_message(self, format, *args):
         pass
 
@@ -48,7 +46,7 @@ def lancer_serveur_web():
     server.serve_forever()
 
 # ==========================================
-# FONCTIONNEMENT DU BOT
+# INTERFACE CLAVIER
 # ==========================================
 def menu_principal():
     keyboard = [
@@ -60,11 +58,14 @@ def menu_principal():
     return InlineKeyboardMarkup(keyboard)
 
 def bouton_retour():
-    keyboard = [[InlineKeyboardButton("⬅️ Retour au menu principal", callback_data="retour")]]
-    return InlineKeyboardMarkup(keyboard)
+    return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Retour au menu", callback_data="retour")]])
 
+# ==========================================
+# LOGIQUE DU BOT
+# ==========================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texte = f"*{NOM}*\n\n{MESSAGE_ACCUEIL}"
+    
     if os.path.exists(PHOTO_ACCUEIL):
         with open(PHOTO_ACCUEIL, "rb") as photo:
             await update.message.reply_photo(
@@ -74,8 +75,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=menu_principal()
             )
     else:
+        # Fallback si la photo est manquante pour éviter le crash
         await update.message.reply_text(
-            text=texte,
+            text=f"⚠️ Image {PHOTO_ACCUEIL} manquante\n\n{texte}",
             parse_mode="Markdown",
             reply_markup=menu_principal()
         )
@@ -86,14 +88,14 @@ async def gerer_boutons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     choix = query.data
 
     if choix == "menu":
-        if os.path.exists(PHOTO_CARTE) and query.message.photo:
+        if os.path.exists(PHOTO_CARTE):
             with open(PHOTO_CARTE, "rb") as photo:
                 await query.edit_message_media(
                     media=InputMediaPhoto(media=photo, caption=SERVICES, parse_mode="Markdown"),
                     reply_markup=bouton_retour()
                 )
         else:
-            await modifier_message(query, SERVICES, bouton_retour())
+            await modifier_message(query, f"⚠️ Image {PHOTO_CARTE} manquante\n\n{SERVICES}", bouton_retour())
 
     elif choix == "horaires":
         await modifier_message(query, HORAIRES, bouton_retour())
@@ -104,31 +106,21 @@ async def gerer_boutons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif choix == "avis":
         moyenne = sum(avis_clients) / len(avis_clients)
-        texte_avis = (f"⭐ *AVIS CLIENTS*\n\n"
-            f"Note moyenne : *{moyenne:.1f} / 5* ({len(avis_clients)} avis)\n\n"
-            f"Cliquez ci-dessous pour laisser une note :"
-        )
+        texte_avis = (f"⭐ *AVIS CLIENTS*\n\nNote : *{moyenne:.1f} / 5*\n\nLaissez une note :")
         keyboard = [
-            [
-                InlineKeyboardButton("⭐ 1", callback_data="note_1"),
-                InlineKeyboardButton("⭐ 2", callback_data="note_2"),
-                InlineKeyboardButton("⭐ 3", callback_data="note_3"),
-                InlineKeyboardButton("⭐ 4", callback_data="note_4"),
-                InlineKeyboardButton("⭐ 5", callback_data="note_5"),
-            ],
-            [InlineKeyboardButton("⬅️ Retour au menu principal", callback_data="retour")]
+            [InlineKeyboardButton(f"⭐ {i}", callback_data=f"note_{i}") for i in range(1, 6)],
+            [InlineKeyboardButton("⬅️ Retour", callback_data="retour")]
         ]
         await modifier_message(query, texte_avis, InlineKeyboardMarkup(keyboard))
 
     elif choix.startswith("note_"):
         note = int(choix.split("_")[1])
         avis_clients.append(note)
-        texte_merci = f"✅ Merci pour votre note de *{note}/5* !"
-        await modifier_message(query, texte_merci, bouton_retour())
+        await modifier_message(query, f"✅ Merci pour votre note de *{note}/5* !", bouton_retour())
 
     elif choix == "retour":
         texte = f"*{NOM}*\n\n{MESSAGE_ACCUEIL}"
-        if os.path.exists(PHOTO_ACCUEIL) and query.message.photo:
+        if os.path.exists(PHOTO_ACCUEIL):
             with open(PHOTO_ACCUEIL, "rb") as photo:
                 await query.edit_message_media(
                     media=InputMediaPhoto(media=photo, caption=texte, parse_mode="Markdown"),
@@ -138,7 +130,7 @@ async def gerer_boutons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await modifier_message(query, texte, menu_principal())
 
 async def modifier_message(query, texte, clavier):
-    # Cette fonction gère la modification du texte, qu'il y ait une photo ou non
+    # Gère la modification selon si le message actuel contient une photo ou non
     if query.message.photo:
         await query.edit_message_caption(caption=texte, parse_mode="Markdown", reply_markup=clavier)
     else:
@@ -146,18 +138,16 @@ async def modifier_message(query, texte, clavier):
 
 def main():
     if not TOKEN:
-        print("Erreur: La variable TELEGRAM_TOKEN est vide ou absente.")
+        print("ERREUR : TELEGRAM_TOKEN introuvable.")
         return
 
-    # Lancement du serveur de santé pour Render
     threading.Thread(target=lancer_serveur_web, daemon=True).start()
 
-    # Configuration du bot
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(gerer_boutons))
 
-    print("Bot démarré avec succès...")
+    print("Bot en ligne...")
     app.run_polling()
 
 if __name__ == "__main__":
