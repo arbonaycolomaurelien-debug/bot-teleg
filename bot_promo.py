@@ -1,19 +1,17 @@
+py
 import os
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# Chargement du token
-load_dotenv()
-TOKEN = os.getenv("TELEGRAM_TOKEN")
+# ==========================================
+# CONFIGURATION DIRECTE
+# ==========================================
+TOKEN = "9275289835:AAHp9OKE_gOmUSTe2yG2Iqjyymtz8WnbWw0"
 
-# ==========================================
-# RÉGLAGES (LIENS PHOTOS DIRECTS)
-# ==========================================
 NOM = "Livraison à Amiens"
-# Votre lien photo qui fonctionnait bien
+# Lien de la photo du menu qui fonctionne
 PHOTO_URL = "https://i.postimg.cc/sX97S6S8/menu.jpg"
 
 LOCALISATION = "Amiens et environs"
@@ -40,11 +38,13 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args): pass
 
 def lancer_serveur_web():
+    # Utilise le port 10000 par défaut pour Render
     port = int(os.environ.get("PORT", 10000))
-    HTTPServer(("0.0.0.0", port), HealthCheckHandler).serve_forever()
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    server.serve_forever()
 
 # ==========================================
-# BOUTONS
+# INTERFACE BOUTONS
 # ==========================================
 def menu_principal():
     return InlineKeyboardMarkup([
@@ -58,7 +58,7 @@ def bouton_retour():
     return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Retour au menu", callback_data="retour")]])
 
 # ==========================================
-# FONCTIONS
+# LOGIQUE DU BOT
 # ==========================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_photo(
@@ -85,8 +85,10 @@ async def gerer_boutons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif choix == "avis":
         moyenne = sum(avis_clients) / len(avis_clients)
         texte = f"⭐ *AVIS CLIENTS*\n\nNote : *{moyenne:.1f} / 5*\n\nLaissez une note :"
-        keyboard = [[InlineKeyboardButton(f"⭐ {i}", callback_data=f"note_{i}") for i in range(1, 6)],
-                    [InlineKeyboardButton("⬅️ Retour", callback_data="retour")]]
+        keyboard = [
+            [InlineKeyboardButton(f"⭐ {i}", callback_data=f"note_{i}") for i in range(1, 6)],
+            [InlineKeyboardButton("⬅️ Retour", callback_data="retour")]
+        ]
         await modifier_message(query, texte, InlineKeyboardMarkup(keyboard))
     elif choix.startswith("note_"):
         avis_clients.append(int(choix.split("_")[1]))
@@ -101,12 +103,17 @@ async def modifier_message(query, texte, clavier):
     await query.edit_message_caption(caption=texte, parse_mode="Markdown", reply_markup=clavier)
 
 def main():
-    if not TOKEN: return
+    # Lancement du serveur web en arrière-plan
     threading.Thread(target=lancer_serveur_web, daemon=True).start()
+
+    # Initialisation du bot avec le nouveau token
     app = Application.builder().token(TOKEN).build()
+    
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(gerer_boutons))
-    print("Bot démarré...")
+
+    print("Bot démarré avec le nouveau token...")
+    # drop_pending_updates=True permet d'ignorer les messages envoyés quand le bot était éteint
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
