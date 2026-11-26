@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
+# Chargement des variables d'environnement
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 
@@ -18,19 +19,19 @@ LOCALISATION = "Amiens et environs"
 
 MESSAGE_ACCUEIL = "Bonjour ! Nous sommes disponibles sur Amiens, n'hésitez pas à consulter le menu ci-dessous !"
 
-HORAIRES = """🕒 NOS HORAIRES
+HORAIRES = """🕒 *NOS HORAIRES*
 Disponible tous les jours de 10h00 à 01h00 du matin."""
 
-SERVICES = """📋 NOTRE MENU & SERVICES
+SERVICES = """📋 *NOTRE MENU & SERVICES*
 • Livraison rapide sur Amiens et alentours
 • Produits sélectionnés avec soin
 • Service discret et réactif"""
 
-# Liste de départ des avis clients (max 5 étoiles)
+# Liste de départ des avis clients
 avis_clients = [5]
 
 # ==========================================
-# SERVEUR WEB POUR RENDER (OFFRE GRATUITE)
+# SERVEUR WEB POUR RENDER
 # ==========================================
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -88,7 +89,7 @@ async def gerer_boutons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if os.path.exists(PHOTO_CARTE) and query.message.photo:
             with open(PHOTO_CARTE, "rb") as photo:
                 await query.edit_message_media(
-                    media=InputMediaPhoto(media=photo, caption=SERVICES),
+                    media=InputMediaPhoto(media=photo, caption=SERVICES, parse_mode="Markdown"),
                     reply_markup=bouton_retour()
                 )
         else:
@@ -137,6 +138,7 @@ async def gerer_boutons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await modifier_message(query, texte, menu_principal())
 
 async def modifier_message(query, texte, clavier):
+    # Cette fonction gère la modification du texte, qu'il y ait une photo ou non
     if query.message.photo:
         await query.edit_message_caption(caption=texte, parse_mode="Markdown", reply_markup=clavier)
     else:
@@ -144,16 +146,19 @@ async def modifier_message(query, texte, clavier):
 
 def main():
     if not TOKEN:
-        raise ValueError("La variable d'environnement TELEGRAM_TOKEN est manquante !")
+        print("Erreur: La variable TELEGRAM_TOKEN est vide ou absente.")
+        return
 
+    # Lancement du serveur de santé pour Render
     threading.Thread(target=lancer_serveur_web, daemon=True).start()
 
+    # Configuration du bot
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(gerer_boutons))
 
-    print("Bot démarré...")
+    print("Bot démarré avec succès...")
     app.run_polling()
 
-if __name__=="_main_":
+if __name__ == "__main__":
     main()
