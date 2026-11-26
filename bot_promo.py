@@ -1,35 +1,47 @@
+py
 import os
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
+# Chargement des variables d'environnement
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 # ==========================================
-# RÉGLAGES
+# VOS RÉGLAGES PERSONNALISÉS
 # ==========================================
 NOM = "Livraison à Amiens"
-PHOTO_ACCUEIL = "https://i.postimg.cc/sX97S6S8/menu.jpg" 
-LIEN_SIGNAL = "https://signal.me/#eu/XA8YULEl38zYvnvfostSl1lD9OSL5YYMIm1SvLOg-i8mRnf1yXZH-YpYtgH-za3h"
+PHOTO_ACCUEIL = "menu.jpg"  # Photo affichée au démarrage (/start)
+PHOTO_CARTE = "carte.jpg"   # Photo affichée quand on clique sur "Consulter le menu"
 LOCALISATION = "Amiens et environs"
-MESSAGE_ACCUEIL = "Bonjour ! Nous sommes disponibles sur Amiens, n'hésitez pas à consulter le menu ci-dessous !"
-HORAIRES = "🕒 *NOS HORAIRES*\nDisponible tous les jours de 10h00 à 01h00 du matin."
-SERVICES = "📋 *NOTRE MENU & SERVICES*\n• Livraison rapide sur Amiens\n• Produits sélectionnés\n• Service discret"
 
+MESSAGE_ACCUEIL = "Bonjour ! Nous sommes disponibles sur Amiens, n'hésitez pas à consulter le menu ci-dessous !"
+
+HORAIRES = """🕒 *NOS HORAIRES*
+Disponible tous les jours de 10h00 à 01h00 du matin."""
+
+SERVICES = """📋 *NOTRE MENU & SERVICES*
+• Livraison rapide sur Amiens et alentours
+• Produits sélectionnés avec soin
+• Service discret et réactif"""
+
+# Liste de départ des avis clients (max 5 étoiles)
 avis_clients = [5]
 
 # ==========================================
-# SERVEUR WEB POUR RENDER
+# SERVEUR WEB POUR RENDER (OFFRE GRATUITE)
 # ==========================================
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"Bot actif")
-    def log_message(self, format, *args): pass
+
+    def log_message(self, format, *args):
+        pass
 
 def lancer_serveur_web():
     port = int(os.environ.get("PORT", 10000))
@@ -37,30 +49,37 @@ def lancer_serveur_web():
     server.serve_forever()
 
 # ==========================================
-# BOUTONS
+# FONCTIONNEMENT DU BOT
 # ==========================================
 def menu_principal():
-    return InlineKeyboardMarkup([
+    keyboard = [
         [InlineKeyboardButton("📋 Consulter le menu", callback_data="menu")],
-        [InlineKeyboardButton("🔒 Commande sur Signal (Discrétion)", url=LIEN_SIGNAL)],
         [InlineKeyboardButton("🕒 Horaires", callback_data="horaires"),
          InlineKeyboardButton("📍 Zone de livraison", callback_data="localisation")],
         [InlineKeyboardButton("⭐ Avis clients", callback_data="avis")]
-    ])
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
 def bouton_retour():
-    return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Retour au menu", callback_data="retour")]])
+    keyboard = [[InlineKeyboardButton("⬅️ Retour au menu principal", callback_data="retour")]]
+    return InlineKeyboardMarkup(keyboard)
 
-# ==========================================
-# LOGIQUE
-# ==========================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_photo(
-        photo=PHOTO_ACCUEIL,
-        caption=f"*{NOM}*\n\n{MESSAGE_ACCUEIL}",
-        parse_mode="Markdown",
-        reply_markup=menu_principal()
-    )
+    texte = f"*{NOM}*\n\n{MESSAGE_ACCUEIL}"
+    if os.path.exists(PHOTO_ACCUEIL):
+        with open(PHOTO_ACCUEIL, "rb") as photo:
+            await update.message.reply_photo(
+                photo=photo,
+                caption=texte,
+                parse_mode="Markdown",
+                reply_markup=menu_principal()
+            )
+    else:
+        await update.message.reply_text(
+            text=texte,
+            parse_mode="Markdown",
+            reply_markup=menu_principal()
+        )
 
 async def gerer_boutons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -68,40 +87,70 @@ async def gerer_boutons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     choix = query.data
 
     if choix == "menu":
-        await query.edit_message_caption(caption=SERVICES, parse_mode="Markdown", reply_markup=bouton_retour())
-    elif choix == "retour":
-        if not query.message.photo:
-            await query.message.delete()
-            await query.message.reply_photo(photo=PHOTO_ACCUEIL, caption=f"*{NOM}*\n\n{MESSAGE_ACCUEIL}", parse_mode="Markdown", reply_markup=menu_principal())
+        if os.path.exists(PHOTO_CARTE) and query.message.photo:
+            with open(PHOTO_CARTE, "rb") as photo:
+                await query.edit_message_media(
+                    media=InputMediaPhoto(media=photo, caption=SERVICES, parse_mode="Markdown"),
+                    reply_markup=bouton_retour()
+                )
         else:
-            await query.edit_message_caption(caption=f"*{NOM}*\n\n{MESSAGE_ACCUEIL}", parse_mode="Markdown", reply_markup=menu_principal())
-    else:
-        texte, clavier = "", bouton_retour()
-        if choix == "horaires": texte = HORAIRES
-        elif choix == "localisation": texte = f"📍 *ZONE DE LIVRAISON*\n\nNous livrons sur : {LOCALISATION}"
-        elif choix == "avis":
-            moyenne = sum(avis_clients) / len(avis_clients)
-            texte = f"⭐ *AVIS CLIENTS*\n\nNote : *{moyenne:.1f} / 5*\n\nLaissez une note :"
-            clavier = InlineKeyboardMarkup([[InlineKeyboardButton(f"⭐ {i}", callback_data=f"note_{i}") for i in range(1, 6)], [InlineKeyboardButton("⬅️ Retour", callback_data="retour")]])
-        elif choix.startswith("note_"):
-            avis_clients.append(int(choix.split("_")[1]))
-            texte = "✅ Merci pour votre note !"
+            await modifier_message(query, SERVICES, bouton_retour())
 
-        if query.message.photo:
-            await query.message.delete()
-            await query.message.reply_text(text=texte, parse_mode="Markdown", reply_markup=clavier)
+    elif choix == "horaires":
+        await modifier_message(query, HORAIRES, bouton_retour())
+
+    elif choix == "localisation":
+        texte_loc = f"📍 *ZONE DE LIVRAISON*\n\nNous livrons sur : {LOCALISATION}"
+        await modifier_message(query, texte_loc, bouton_retour())
+
+    elif choix == "avis":
+        moyenne = sum(avis_clients) / len(avis_clients)
+        texte_avis = (f"⭐ *AVIS CLIENTS*\n\n"
+            f"Note moyenne : *{moyenne:.1f} / 5* ({len(avis_clients)} avis)\n\n"
+            f"Cliquez ci-dessous pour laisser une note :"
+        )
+        keyboard = [
+            [
+                InlineKeyboardButton("⭐ 1", callback_data="note_1"),
+                InlineKeyboardButton("⭐ 2", callback_data="note_2"),
+                InlineKeyboardButton("⭐ 3", callback_data="note_3"),
+                InlineKeyboardButton("⭐ 4", callback_data="note_4"),
+                InlineKeyboardButton("⭐ 5", callback_data="note_5"),
+            ],
+            [InlineKeyboardButton("⬅️ Retour au menu principal", callback_data="retour")]
+        ]
+        await modifier_message(query, texte_avis, InlineKeyboardMarkup(keyboard))
+
+    elif choix.startswith("note_"):
+        note = int(choix.split("_")[1])
+        avis_clients.append(note)
+        texte_merci = f"✅ Merci pour votre note de *{note}/5* !"
+        await modifier_message(query, texte_merci, bouton_retour())
+
+    elif choix == "retour":
+        texte = f"*{NOM}*\n\n{MESSAGE_ACCUEIL}"
+        if os.path.exists(PHOTO_ACCUEIL) and query.message.photo:
+            with open(PHOTO_ACCUEIL, "rb") as photo:
+                await query.edit_message_media(
+                    media=InputMediaPhoto(media=photo, caption=texte, parse_mode="Markdown"),
+                    reply_markup=menu_principal()
+                )
         else:
-            await query.edit_message_text(text=texte, parse_mode="Markdown", reply_markup=clavier)
+            await modifier_message(query, texte, menu_principal())
+
+async def modifier_message(query, texte, clavier):
+    if query.message.photo:
+        await query.edit_message_caption(caption=texte, parse_mode="Markdown", reply_markup=clavier)
+    else:
+        await query.edit_message_text(text=texte, parse_mode="Markdown", reply_markup=clavier)
 
 def main():
     if not TOKEN:
-        print("TOKEN MANQUANT")
+        print("Erreur: La variable d'environnement TELEGRAM_TOKEN est manquante !")
         return
-    threading.Thread(target=lancer_serveur_web, daemon=True).start()
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(gerer_boutons))
-    app.run_polling(drop_pending_updates=True)
 
-if __name__ == "__main__":
-    main()
+    # Lancement du serveur web pour le Health Check de Render
+    threading.Thread(target=lancer_serveur_web, daemon=True).start()
+
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start
