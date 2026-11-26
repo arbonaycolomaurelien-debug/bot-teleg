@@ -1,4 +1,4 @@
-py
+
 import os
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
