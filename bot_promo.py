@@ -154,5 +154,6 @@ def main():
 
     print("Bot démarré...")
     app.run_polling()
-if __name__=="__main__":
-main()
+
+if __name__=="_main_":
+    main()
