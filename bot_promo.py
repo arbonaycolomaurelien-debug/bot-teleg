@@ -1,4 +1,3 @@
-py
 import os
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -11,7 +10,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 TOKEN = "9275289835:AAHp9OKE_gOmUSTe2yG2Iqjyymtz8WnbWw0"
 
 NOM = "Livraison à Amiens"
-# Nouveau lien direct vers votre photo
+# Lien direct vers votre photo
 PHOTO_URL = "https://i.postimg.cc/nc5RK9w0/dwibalzac80.png"
 
 LOCALISATION = "Amiens et environs"
@@ -111,7 +110,6 @@ def main():
     app.add_handler(CallbackQueryHandler(gerer_boutons))
 
     print("Bot démarré avec succès...")
-    # drop_pending_updates=True est essentiel pour débloquer le bot
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
