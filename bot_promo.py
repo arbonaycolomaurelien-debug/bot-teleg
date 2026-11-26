@@ -1,4 +1,3 @@
-py
 import os
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -6,18 +5,18 @@ from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# Chargement des variables d'environnement
+# Chargement du token
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 # ==========================================
-# VOS RÉGLAGES PERSONNALISÉS
+# RÉGLAGES (LIENS PHOTOS DIRECTS)
 # ==========================================
 NOM = "Livraison à Amiens"
-PHOTO_ACCUEIL = "menu.jpg"  # Photo affichée au démarrage (/start)
-PHOTO_CARTE = "carte.jpg"   # Photo affichée quand on clique sur "Consulter le menu"
-LOCALISATION = "Amiens et environs"
+# Votre lien photo qui fonctionnait bien
+PHOTO_URL = "https://i.postimg.cc/sX97S6S8/menu.jpg"
 
+LOCALISATION = "Amiens et environs"
 MESSAGE_ACCUEIL = "Bonjour ! Nous sommes disponibles sur Amiens, n'hésitez pas à consulter le menu ci-dessous !"
 
 HORAIRES = """🕒 *NOS HORAIRES*
@@ -28,58 +27,46 @@ SERVICES = """📋 *NOTRE MENU & SERVICES*
 • Produits sélectionnés avec soin
 • Service discret et réactif"""
 
-# Liste de départ des avis clients (max 5 étoiles)
 avis_clients = [5]
 
 # ==========================================
-# SERVEUR WEB POUR RENDER (OFFRE GRATUITE)
+# SERVEUR WEB (POUR RENDER)
 # ==========================================
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"Bot actif")
-
-    def log_message(self, format, *args):
-        pass
+    def log_message(self, format, *args): pass
 
 def lancer_serveur_web():
     port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
-    server.serve_forever()
+    HTTPServer(("0.0.0.0", port), HealthCheckHandler).serve_forever()
 
 # ==========================================
-# FONCTIONNEMENT DU BOT
+# BOUTONS
 # ==========================================
 def menu_principal():
-    keyboard = [
+    return InlineKeyboardMarkup([
         [InlineKeyboardButton("📋 Consulter le menu", callback_data="menu")],
         [InlineKeyboardButton("🕒 Horaires", callback_data="horaires"),
          InlineKeyboardButton("📍 Zone de livraison", callback_data="localisation")],
         [InlineKeyboardButton("⭐ Avis clients", callback_data="avis")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
+    ])
 
 def bouton_retour():
-    keyboard = [[InlineKeyboardButton("⬅️ Retour au menu principal", callback_data="retour")]]
-    return InlineKeyboardMarkup(keyboard)
+    return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Retour au menu", callback_data="retour")]])
 
+# ==========================================
+# FONCTIONS
+# ==========================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    texte = f"*{NOM}*\n\n{MESSAGE_ACCUEIL}"
-    if os.path.exists(PHOTO_ACCUEIL):
-        with open(PHOTO_ACCUEIL, "rb") as photo:
-            await update.message.reply_photo(
-                photo=photo,
-                caption=texte,
-                parse_mode="Markdown",
-                reply_markup=menu_principal()
-            )
-    else:
-        await update.message.reply_text(
-            text=texte,
-            parse_mode="Markdown",
-            reply_markup=menu_principal()
-        )
+    await update.message.reply_photo(
+        photo=PHOTO_URL,
+        caption=f"*{NOM}*\n\n{MESSAGE_ACCUEIL}",
+        parse_mode="Markdown",
+        reply_markup=menu_principal()
+    )
 
 async def gerer_boutons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -87,70 +74,40 @@ async def gerer_boutons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     choix = query.data
 
     if choix == "menu":
-        if os.path.exists(PHOTO_CARTE) and query.message.photo:
-            with open(PHOTO_CARTE, "rb") as photo:
-                await query.edit_message_media(
-                    media=InputMediaPhoto(media=photo, caption=SERVICES, parse_mode="Markdown"),
-                    reply_markup=bouton_retour()
-                )
-        else:
-            await modifier_message(query, SERVICES, bouton_retour())
-
+        await query.edit_message_media(
+            media=InputMediaPhoto(media=PHOTO_URL, caption=SERVICES, parse_mode="Markdown"),
+            reply_markup=bouton_retour()
+        )
     elif choix == "horaires":
         await modifier_message(query, HORAIRES, bouton_retour())
-
     elif choix == "localisation":
-        texte_loc = f"📍 *ZONE DE LIVRAISON*\n\nNous livrons sur : {LOCALISATION}"
-        await modifier_message(query, texte_loc, bouton_retour())
-
+        await modifier_message(query, f"📍 *ZONE DE LIVRAISON*\n\nNous livrons sur : {LOCALISATION}", bouton_retour())
     elif choix == "avis":
         moyenne = sum(avis_clients) / len(avis_clients)
-        texte_avis = (f"⭐ *AVIS CLIENTS*\n\n"
-            f"Note moyenne : *{moyenne:.1f} / 5* ({len(avis_clients)} avis)\n\n"
-            f"Cliquez ci-dessous pour laisser une note :"
-        )
-        keyboard = [
-            [
-                InlineKeyboardButton("⭐ 1", callback_data="note_1"),
-                InlineKeyboardButton("⭐ 2", callback_data="note_2"),
-                InlineKeyboardButton("⭐ 3", callback_data="note_3"),
-                InlineKeyboardButton("⭐ 4", callback_data="note_4"),
-                InlineKeyboardButton("⭐ 5", callback_data="note_5"),
-            ],
-            [InlineKeyboardButton("⬅️ Retour au menu principal", callback_data="retour")]
-        ]
-        await modifier_message(query, texte_avis, InlineKeyboardMarkup(keyboard))
-
+        texte = f"⭐ *AVIS CLIENTS*\n\nNote : *{moyenne:.1f} / 5*\n\nLaissez une note :"
+        keyboard = [[InlineKeyboardButton(f"⭐ {i}", callback_data=f"note_{i}") for i in range(1, 6)],
+                    [InlineKeyboardButton("⬅️ Retour", callback_data="retour")]]
+        await modifier_message(query, texte, InlineKeyboardMarkup(keyboard))
     elif choix.startswith("note_"):
-        note = int(choix.split("_")[1])
-        avis_clients.append(note)
-        texte_merci = f"✅ Merci pour votre note de *{note}/5* !"
-        await modifier_message(query, texte_merci, bouton_retour())
-
+        avis_clients.append(int(choix.split("_")[1]))
+        await modifier_message(query, "✅ Merci pour votre note !", bouton_retour())
     elif choix == "retour":
-        texte = f"*{NOM}*\n\n{MESSAGE_ACCUEIL}"
-        if os.path.exists(PHOTO_ACCUEIL) and query.message.photo:
-            with open(PHOTO_ACCUEIL, "rb") as photo:
-                await query.edit_message_media(
-                    media=InputMediaPhoto(media=photo, caption=texte, parse_mode="Markdown"),
-                    reply_markup=menu_principal()
-                )
-        else:
-            await modifier_message(query, texte, menu_principal())
+        await query.edit_message_media(
+            media=InputMediaPhoto(media=PHOTO_URL, caption=f"*{NOM}*\n\n{MESSAGE_ACCUEIL}", parse_mode="Markdown"),
+            reply_markup=menu_principal()
+        )
 
 async def modifier_message(query, texte, clavier):
-    if query.message.photo:
-        await query.edit_message_caption(caption=texte, parse_mode="Markdown", reply_markup=clavier)
-    else:
-        await query.edit_message_text(text=texte, parse_mode="Markdown", reply_markup=clavier)
+    await query.edit_message_caption(caption=texte, parse_mode="Markdown", reply_markup=clavier)
 
 def main():
-    if not TOKEN:
-        print("Erreur: La variable d'environnement TELEGRAM_TOKEN est manquante !")
-        return
-
-    # Lancement du serveur web pour le Health Check de Render
+    if not TOKEN: return
     threading.Thread(target=lancer_serveur_web, daemon=True).start()
-
     app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(gerer_boutons))
+    print("Bot démarré...")
+    app.run_polling(drop_pending_updates=True)
+
+if __name__ == "__main__":
+    main()
