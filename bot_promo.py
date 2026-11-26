@@ -2,7 +2,7 @@ import os
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 load_dotenv()
@@ -14,15 +14,19 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 NOM = "Livraison à Amiens"
 PHOTO_ACCUEIL = "https://i.postimg.cc/sX97S6S8/menu.jpg" 
 
+# Votre lien Signal pour la discrétion
+LIEN_SIGNAL = "https://signal.me/#eu/XA8YULEl38zYvnvfostSl1lD9OSL5YYMIm1SvLOg-i8mRnf1yXZH-YpYtgH-za3h"
+
 LOCALISATION = "Amiens et environs"
 MESSAGE_ACCUEIL = "Bonjour ! Nous sommes disponibles sur Amiens, n'hésitez pas à consulter le menu ci-dessous !"
+
 HORAIRES = "🕒 *NOS HORAIRES*\nDisponible tous les jours de 10h00 à 01h00 du matin."
-SERVICES = "📋 *NOTRE MENU & SERVICES*\n• Livraison rapide sur Amiens\n• Produits sélectionnés\n• Service discret"
+SERVICES = "📋 *NOTRE MENU & SERVICES*\n• Livraison rapide sur Amiens\n• Produits sélectionnés avec soin\n• Service discret et réactif"
 
 avis_clients = [5]
 
 # ==========================================
-# SERVEUR WEB
+# SERVEUR WEB (POUR RENDER)
 # ==========================================
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -41,6 +45,7 @@ def lancer_serveur_web():
 def menu_principal():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📋 Consulter le menu", callback_data="menu")],
+        [InlineKeyboardButton("🔒 Commande sur Signal (Discrétion)", url=LIEN_SIGNAL)],
         [InlineKeyboardButton("🕒 Horaires", callback_data="horaires"),
          InlineKeyboardButton("📍 Zone de livraison", callback_data="localisation")],
         [InlineKeyboardButton("⭐ Avis clients", callback_data="avis")]
@@ -50,7 +55,7 @@ def bouton_retour():
     return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Retour au menu", callback_data="retour")]])
 
 # ==========================================
-# LOGIQUE
+# LOGIQUE DU BOT
 # ==========================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_photo(
@@ -65,13 +70,12 @@ async def gerer_boutons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     choix = query.data
 
-    # CAS OÙ ON GARDE LA PHOTO (Accueil et Menu)
+    # Sections gardant la photo
     if choix == "menu":
         await query.edit_message_caption(caption=SERVICES, parse_mode="Markdown", reply_markup=bouton_retour())
     
     elif choix == "retour":
         if not query.message.photo:
-            # Si on revient d'un texte sans photo, on supprime et on renvoie avec photo
             await query.message.delete()
             await query.message.reply_photo(
                 photo=PHOTO_ACCUEIL,
@@ -86,7 +90,7 @@ async def gerer_boutons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=menu_principal()
             )
 
-    # CAS OÙ ON ENLÈVE LA PHOTO (Horaires, Localisation, Avis)
+    # Sections en texte pur (sans photo pour plus de clarté)
     else:
         texte = ""
         clavier = bouton_retour()
@@ -106,7 +110,6 @@ async def gerer_boutons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             avis_clients.append(int(choix.split("_")[1]))
             texte = "✅ Merci pour votre note !"
 
-        # Si le message actuel a une photo, on le supprime pour envoyer un message texte pur
         if query.message.photo:
             await query.message.delete()
             await query.message.reply_text(text=texte, parse_mode="Markdown", reply_markup=clavier)
@@ -114,11 +117,17 @@ async def gerer_boutons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(text=texte, parse_mode="Markdown", reply_markup=clavier)
 
 def main():
-    if not TOKEN: return
+    if not TOKEN:
+        print("Variable TELEGRAM_TOKEN manquante.")
+        return
+    
     threading.Thread(target=lancer_serveur_web, daemon=True).start()
+    
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(gerer_boutons))
+    
+    print("Bot en ligne avec lien Signal...")
     app.run_polling()
 
 if __name__ == "__main__":
